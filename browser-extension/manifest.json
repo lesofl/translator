@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "LinguaAdsf",
+  "version": "1.0.0",
+  "description": "Offline page translator powered by your local Python server.",
+  "permissions": [
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:5000/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "PT → EN Translate"
+  },
+  "content_scripts": [],
+  "icons": {
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
