@@ -1,4 +1,4 @@
-# LinguaAdsf — Offline Page Translator
+# Lingua — Offline Page Translator
 
 A browser extension that translates web pages to English using a local server. No cloud, no API keys, fully offline after setup.
 
