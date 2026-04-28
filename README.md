@@ -10,15 +10,14 @@ A browser extension that translates web pages to English using a local [LibreTra
 # 1. Start LibreTranslate + Hono proxy
 docker compose up -d
 
-# 2. Build the extension
-cd extension && bun install && bun run build
-
-# 3. Load in Chrome
+# 2. Load in Chrome
 #    chrome://extensions → Developer Mode → Load unpacked
-#    Select extension/.output/chrome-mv3/
+#    Select extension/app/
 ```
 
 The extension connects to `http://127.0.0.1:5000` by default. Change it via the gear icon in the popup.
+
+> **No build step needed.** `extension/app/` contains the pre-built extension ready to load. To rebuild from source: `cd extension && bun install && bun run build`.
 
 ---
 

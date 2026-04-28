@@ -6,6 +6,9 @@ export default defineContentScript({
   main() {
     browser.runtime.onMessage.addListener((msg: unknown) => {
       const m = msg as { type: string; translations?: string[] };
+      if (m.type === "PING") {
+        return Promise.resolve(true);
+      }
       if (m.type === "COLLECT_TEXTS") {
         return Promise.resolve(collectTexts());
       }
@@ -17,32 +20,36 @@ export default defineContentScript({
         contentRestore();
         return Promise.resolve(true);
       }
-      return;
     });
   },
 });
 
-function collectTexts(): string[] {
-  (window as unknown as Record<string, unknown>).__ptNodes = [];
-  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
-    acceptNode(node) {
-      if (!node.nodeValue?.trim()) return NodeFilter.FILTER_REJECT;
-      if ((node as Record<string, unknown>).__ptDone) return NodeFilter.FILTER_REJECT;
-      let el: Element | null = node.parentElement;
-      while (el) {
-        if (SKIP_TAGS.has(el.tagName)) return NodeFilter.FILTER_REJECT;
-        el = el.parentElement;
-      }
-      return NodeFilter.FILTER_ACCEPT;
-    },
-  });
-
-  const texts: string[] = [];
-  let n: Text | null;
-  while ((n = walker.nextNode() as Text | null)) {
-    ((window as unknown as Record<string, unknown>).__ptNodes as Text[]).push(n);
-    texts.push(n.nodeValue!);
+function isSkipped(el: Element | null): boolean {
+  while (el) {
+    if (SKIP_TAGS.has(el.tagName)) return true;
+    el = el.parentElement;
   }
+  return false;
+}
+
+function collectTexts(): string[] {
+  const body = document.body;
+  if (!body) return [];
+
+  const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+  const texts: string[] = [];
+  const nodes: Text[] = [];
+
+  while (walker.nextNode()) {
+    const node = walker.currentNode as Text;
+    if (!node.nodeValue?.trim()) continue;
+    if (isSkipped(node.parentElement)) continue;
+
+    nodes.push(node);
+    texts.push(node.nodeValue);
+  }
+
+  (window as unknown as Record<string, unknown>).__ptNodes = nodes;
   return texts;
 }
 
@@ -59,18 +66,17 @@ function applyTranslations(translations: string[]): void {
 }
 
 function contentRestore(): void {
-  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
-    acceptNode(node) {
-      return (node as unknown as Record<string, unknown>).__ptOriginal !== undefined
-        ? NodeFilter.FILTER_ACCEPT
-        : NodeFilter.FILTER_REJECT;
-    },
-  });
-  let n: Text | null;
-  while ((n = walker.nextNode() as Text | null)) {
-    n.nodeValue = (n as unknown as Record<string, unknown>).__ptOriginal as string;
-    delete (n as unknown as Record<string, unknown>).__ptOriginal;
-    delete (n as unknown as Record<string, unknown>).__ptDone;
+  const body = document.body;
+  if (!body) return;
+
+  const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+  while (walker.nextNode()) {
+    const node = walker.currentNode as unknown as Record<string, unknown>;
+    if (node.__ptOriginal !== undefined) {
+      (walker.currentNode as Text).nodeValue = node.__ptOriginal as string;
+      delete node.__ptOriginal;
+      delete node.__ptDone;
+    }
   }
 }
 

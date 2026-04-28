@@ -1,7 +1,27 @@
 import { browser } from "wxt/browser";
 
 // ── State ──
-let SERVER = "http://127.0.0.1:5000";
+let SERVER = "http://localhost:5000";
+
+// ── Restricted URL patterns (cannot inject content scripts) ──
+const RESTRICTED = /^(chrome|chrome-extension|about|edge|opera):|^https?:\/\/chrome\.google\.com\/webstore/;
+
+async function ensureContentScript(tabId: number): Promise<boolean> {
+  try {
+    await browser.tabs.sendMessage(tabId, { type: "PING" });
+    return true;
+  } catch {
+    try {
+      await browser.scripting.executeScript({
+        target: { tabId },
+        files: ["/content-scripts/content.js"],
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
 
 // ── DOM refs ──
 const btnTranslate = document.getElementById("btn-translate") as HTMLButtonElement;
@@ -78,6 +98,21 @@ btnTranslate.addEventListener("click", async () => {
 
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id) return;
+
+  if (tab.url && RESTRICTED.test(tab.url)) {
+    messageEl.textContent = "Cannot translate this type of page.";
+    btnTranslate.disabled = false;
+    return;
+  }
+
+  const connected = await ensureContentScript(tab.id);
+  if (!connected) {
+    messageEl.textContent =
+      "Content script could not be loaded. Try refreshing the page.";
+    btnTranslate.disabled = false;
+    return;
+  }
+
   const fromLang = langSelect.value;
 
   try {
@@ -139,10 +174,19 @@ btnTranslate.addEventListener("click", async () => {
 btnRestore.addEventListener("click", async () => {
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id) return;
-  try {
-    await browser.tabs.sendMessage(tab.id, { type: "RESTORE_ORIGINAL" });
-  } catch {
-    // content script may not be loaded yet
+
+  if (tab.url && RESTRICTED.test(tab.url)) {
+    btnRestore.style.display = "none";
+    return;
+  }
+
+  const connected = await ensureContentScript(tab.id);
+  if (connected) {
+    try {
+      await browser.tabs.sendMessage(tab.id, { type: "RESTORE_ORIGINAL" });
+    } catch {
+      // content script may not be loaded yet
+    }
   }
   btnRestore.style.display = "none";
   statusText.textContent = "Original text restored";

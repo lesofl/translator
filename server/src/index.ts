@@ -7,10 +7,7 @@ const ALLOWED_ORIGINS = ["chrome-extension://", "moz-extension://"];
 const app = new Hono();
 
 app.use("*", async (c, next) => {
-  const origin = c.req.header("Origin") || "";
-  if (ALLOWED_ORIGINS.some((o) => origin.startsWith(o))) {
-    c.header("Access-Control-Allow-Origin", origin);
-  }
+  c.header("Access-Control-Allow-Origin", "*");
   c.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   c.header("Access-Control-Allow-Headers", "Content-Type");
 
