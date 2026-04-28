@@ -1,4 +1,4 @@
-const SERVER = "http://127.0.0.1:5000";
+let SERVER = "http://127.0.0.1:5000";
 
 const btnTranslate = document.getElementById("btn-translate");
 const btnRestore   = document.getElementById("btn-restore");
@@ -39,7 +39,7 @@ async function checkServer() {
     }
   } catch (_) {}
   statusDot.className = "offline";
-  statusText.textContent = "Server offline (run server.py)";
+  statusText.textContent = "Server offline — check settings";
   btnTranslate.disabled = true;
   return false;
 }
@@ -64,7 +64,6 @@ btnTranslate.addEventListener("click", async () => {
   const fromLang = langSelect.value;
 
   try {
-    // ── Pass 1: collect text nodes from the page ────────────────────────────
     const collected = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       func: collectTexts,
@@ -79,7 +78,6 @@ btnTranslate.addEventListener("click", async () => {
 
     setProgress(0, texts.length);
 
-    // ── Pass 2: fetch translations in popup context (no mixed-content block) ─
     const BATCH = 50;
     const allTranslations = [];
 
@@ -103,7 +101,6 @@ btnTranslate.addEventListener("click", async () => {
       setProgress(allTranslations.length, texts.length);
     }
 
-    // ── Pass 3: apply translations back into the page ───────────────────────
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       func: applyTranslations,
@@ -130,8 +127,6 @@ btnRestore.addEventListener("click", async () => {
   statusText.textContent = "Original text restored";
 });
 
-// ── Functions injected into the page ────────────────────────────────────────
-
 const SKIP_TAGS = new Set([
   "SCRIPT", "STYLE", "NOSCRIPT", "IFRAME", "CANVAS", "SVG", "MATH", "CODE", "PRE",
 ]);
@@ -152,7 +147,6 @@ function makeWalker() {
 }
 
 function collectTexts() {
-  // Marks each visited text node so applyTranslations can find them in order
   window.__ptNodes = [];
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
@@ -205,4 +199,12 @@ function contentRestore() {
   }
 }
 
-checkServer();
+document.getElementById("btn-settings").addEventListener("click", () => {
+  chrome.runtime.openOptionsPage();
+});
+
+(async () => {
+  const stored = await chrome.storage.local.get("serverUrl");
+  if (stored.serverUrl) SERVER = stored.serverUrl;
+  checkServer();
+})();

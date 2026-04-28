@@ -1,0 +1,17 @@
+services:
+  libretranslate:
+    image: libretranslate/libretranslate:latest
+    volumes:
+      - ./lt-data:/home/libretranslate/.local
+    restart: unless-stopped
+
+  proxy:
+    build: ./node-server
+    ports:
+      - "5000:5000"
+    environment:
+      LT_URL: "http://libretranslate:5000"
+      PORT: "5000"
+    depends_on:
+      - libretranslate
+    restart: unless-stopped

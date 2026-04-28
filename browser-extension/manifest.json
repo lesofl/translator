@@ -1,18 +1,24 @@
 {
   "manifest_version": 3,
-  "name": "LinguaA",
-  "version": "1.0.0",
-  "description": "Offline page translator powered by your local Python server.",
+  "name": "Lingua",
+  "version": "2.0.0",
+  "description": "Offline page translator powered by LibreTranslate.",
   "permissions": [
     "activeTab",
-    "scripting"
+    "scripting",
+    "storage"
   ],
   "host_permissions": [
-    "http://127.0.0.1:5000/*"
+    "http://127.0.0.1:*/*",
+    "http://localhost:*/*"
   ],
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": false
+  },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "PT → EN Translate"
+    "default_title": "Translate Page"
   },
   "content_scripts": [],
   "icons": {
