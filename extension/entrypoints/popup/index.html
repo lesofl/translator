@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lingua</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Lingua</h1>
+    </div>
+    <button id="btn-settings" title="Settings">&#9881;</button>
+    <div class="badge">OFFLINE</div>
+  </header>
+
+  <div class="content">
+    <div id="status-bar">
+      <div id="status-dot"></div>
+      <span id="status-text">Checking server...</span>
+    </div>
+
+    <div id="lang-row">
+      <span>From:</span>
+      <select id="lang-select">
+        <option value="pt">Portuguese (pt)</option>
+        <option value="ja">Japanese (ja)</option>
+      </select>
+      <span>&rarr; EN</span>
+    </div>
+
+    <button id="btn-translate" disabled>Translate Page</button>
+    <button id="btn-restore">Restore Original</button>
+
+    <div id="progress">
+      <div id="progress-bar-wrap">
+        <div id="progress-bar"></div>
+      </div>
+      <div id="progress-label">0 / 0</div>
+    </div>
+
+    <div id="message"></div>
+  </div>
+
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>
