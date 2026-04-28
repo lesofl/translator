@@ -6,7 +6,7 @@ services:
     restart: unless-stopped
 
   proxy:
-    build: ./node-server
+    build: ./server
     ports:
       - "5000:5000"
     environment:

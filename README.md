@@ -1,21 +1,24 @@
 # Lingua — Offline Page Translator
 
-A browser extension that translates web pages to English using a local LibreTranslate server via Docker. No cloud, no API keys, fully offline after initial model download.
+A browser extension that translates web pages to English using a local [LibreTranslate](https://libretranslate.com) server via Docker. No cloud, no API keys, fully offline after initial model download.
 
 ---
 
 ## Quick Start
 
 ```bash
-# 1. Start LibreTranslate + proxy
+# 1. Start LibreTranslate + Hono proxy
 docker compose up -d
 
-# 2. Load extension in Chrome
-#    Go to chrome://extensions/ → Enable Developer Mode → Load unpacked
-#    Select the browser-extension/ folder
+# 2. Build the extension
+cd extension && bun install && bun run build
 
-# 3. Click the Lingua icon in the toolbar → select language → Translate Page
+# 3. Load in Chrome
+#    chrome://extensions → Developer Mode → Load unpacked
+#    Select extension/.output/chrome-mv3/
 ```
+
+The extension connects to `http://127.0.0.1:5000` by default. Change it via the gear icon in the popup.
 
 ---
 
@@ -23,46 +26,40 @@ docker compose up -d
 
 ```
 ┌──────────────────────┐
-│  Browser Extension    │  configurable SERVER_URL (default http://127.0.0.1:5000)
+│  Browser Extension    │  WXT (TypeScript), configurable SERVER_URL
 └──────────┬───────────┘
            │ HTTP
            ▼
 ┌──────────────────────┐
-│  Hono Proxy :5000    │  thin Node.js adapter — fans out batch requests
+│  Hono Proxy :5000    │  bun + Hono, fans out batch requests to LT
 └──────────┬───────────┘
            │ Docker network
            ▼
 ┌──────────────────────┐
-│  LibreTranslate       │  translation engine (Argos Translate under the hood)
-│  (Docker container)   │  auto-downloads language models on first use
+│  LibreTranslate       │  translation engine (Argos Translate internally)
+│  (Docker container)   │  auto-downloads models on first use
 └──────────────────────┘
 ```
 
-- **Hono proxy** translates the extension's batched API into individual LibreTranslate calls and handles CORS.
-- **LibreTranslate** handles the actual translation. Language models are cached in `./lt-data/` so they persist across container restarts.
-
 ---
 
-## Browser Extension
+## Extension (WXT)
 
-### Load in Chrome / Edge / Brave
+Built with [WXT](https://wxt.dev), TypeScript, and bun.
 
-1. Go to `chrome://extensions/` (or `edge://extensions/`)
-2. Enable **Developer Mode** (top-right toggle)
-3. Click **Load unpacked**
-4. Select the `browser-extension/` folder
-
-### Load in Firefox
-
-1. Go to `about:debugging#/runtime/this-firefox`
-2. Click **Load Temporary Add-on...**
-3. Navigate into `browser-extension/` and select `manifest.json`
+```bash
+cd extension
+bun install        # install deps + run wxt prepare
+bun run dev        # dev mode with HMR
+bun run build      # production build → .output/chrome-mv3/
+bun run zip        # package for store submission
+bun run dev:firefox
+bun run build:firefox
+```
 
 ### Configure Server URL
 
-Click the gear icon (⚙) in the extension popup to open settings. The default is `http://127.0.0.1:5000`. Change this if:
-- You're running the proxy on a different port
-- You're tunneling the service and need an external URL
+Click the gear (⚙) in the popup to open settings. Default is `http://127.0.0.1:5000`.
 
 ---
 
@@ -73,19 +70,17 @@ services:
   libretranslate:
     image: libretranslate/libretranslate:latest
     volumes:
-      - ./lt-data:/home/libretranslate/.local   # persist downloaded models
+      - ./lt-data:/home/libretranslate/.local
     restart: unless-stopped
 
   proxy:
-    build: ./node-server
+    build: ./server
     ports:
-      - "5000:5000"                              # expose to host
+      - "5000:5000"
     environment:
       LT_URL: "http://libretranslate:5000"
     restart: unless-stopped
 ```
-
-### Commands
 
 ```bash
 docker compose up -d      # start both services
@@ -93,36 +88,41 @@ docker compose down       # stop
 docker compose logs -f    # follow logs
 ```
 
-### Adding Languages
-
-LibreTranslate auto-downloads language models on first use. To pre-load specific languages at startup, add to `docker-compose.yml`:
-
-```yaml
-environment:
-  LT_LOAD_ONLY: "en,pt,ja,es,fr,de,zh"   # under libretranslate service
-```
-
-Supported codes: `en, pt, ja, es, fr, de, zh, ko, ar, ru, it, nl, tr, pl, ...`
-
 ---
 
-## Node Proxy (standalone)
+## Hono Proxy (standalone)
 
-You can also run the proxy outside Docker:
+You can also run the proxy directly with bun:
 
 ```bash
-cd node-server
-npm install
-LT_URL=http://127.0.0.1:5001 npm start     # if LT is running separately
+cd server
+bun install
+LT_URL=http://127.0.0.1:5001 bun dev    # LT running separately
 ```
 
-### Proxy Endpoints
+### Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/health` | Returns `{status, installed_pairs}` — used by extension to discover language pairs |
-| `POST` | `/translate` | `{texts:[...], from:"pt", to:"en"}` → `{translations:[...]}` — fan-out to LT |
+| `GET` | `/health` | `{status, installed_pairs}` — extension uses this to discover languages |
+| `POST` | `/translate` | `{texts:[...], from, to}` → `{translations:[...]}` — fan-out to LT |
 | `GET` | `/languages` | Pass-through to LibreTranslate `/languages` |
+
+---
+
+## Tunnelling
+
+To access from another machine or the internet:
+
+```bash
+# Cloudflare Tunnel
+cloudflared tunnel --url http://127.0.0.1:5000
+
+# ngrok
+ngrok http 5000
+```
+
+Then update the server URL in the extension's settings.
 
 ---
 
@@ -130,8 +130,7 @@ LT_URL=http://127.0.0.1:5001 npm start     # if LT is running separately
 
 | Problem | Fix |
 |---------|-----|
-| Status dot is red | Run `docker compose up -d`, check `docker compose logs` |
-| "Server offline" in popup | Check server URL in extension settings (gear icon) |
-| Translation slow on first use | LibreTranslate is downloading the language model — wait and retry |
-| Extension not loading | Ensure `icons/icon48.png` and `icons/icon128.png` exist |
-| Port 5000 already in use | Change `ports:` in docker-compose.yml and update extension settings |
+| Status dot red | Run `docker compose up -d`, check `docker compose logs` |
+| Slow first translation | LibreTranslate is downloading the model — retry in a minute |
+| Message-passing error | The page may not have fully loaded — refresh and retry |
+| Port 5000 in use | Change `ports:` in docker-compose.yml and update extension settings |
