@@ -8,37 +8,48 @@
 </head>
 <body>
   <header>
-    <div>
+    <div class="brand">
       <h1>Lingua</h1>
+      <div class="badge">OFFLINE TRANSLATOR</div>
     </div>
-    <button id="btn-settings" title="Settings">&#9881;</button>
-    <div class="badge">OFFLINE</div>
+    <div class="header-actions">
+      <button id="btn-refresh" title="Refresh server status" aria-label="Refresh server status">&#8635;</button>
+      <button id="btn-settings" title="Settings" aria-label="Open settings">&#9881;</button>
+    </div>
   </header>
 
   <div class="content">
     <div id="status-bar">
-      <div id="status-dot"></div>
-      <span id="status-text">Checking server...</span>
+      <div class="status-main">
+        <div id="status-dot"></div>
+        <span id="status-text">Checking server...</span>
+      </div>
+      <button id="btn-status-refresh" class="ghost-button" type="button">Refresh</button>
     </div>
 
-    <div id="lang-row">
-      <span>From:</span>
-      <select id="lang-select">
-        <option value="pt">Portuguese (pt)</option>
-        <option value="ja">Japanese (ja)</option>
-      </select>
-      <span>&rarr; EN</span>
+    <section class="panel">
+      <div class="section-label">Translation</div>
+      <div id="lang-row">
+        <label for="lang-select">From</label>
+        <select id="lang-select"></select>
+        <span class="lang-target">&rarr; EN</span>
+      </div>
+    </section>
+
+    <div class="button-stack">
+      <button id="btn-translate" disabled>Translate Page</button>
+      <button id="btn-restore">Restore Original</button>
     </div>
 
-    <button id="btn-translate" disabled>Translate Page</button>
-    <button id="btn-restore">Restore Original</button>
-
-    <div id="progress">
+    <section id="progress" class="panel">
+      <div class="progress-header">
+        <div class="section-label">Progress</div>
+        <div id="progress-label">0 / 0 nodes</div>
+      </div>
       <div id="progress-bar-wrap">
         <div id="progress-bar"></div>
       </div>
-      <div id="progress-label">0 / 0</div>
-    </div>
+    </section>
 
     <div id="message"></div>
   </div>

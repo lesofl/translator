@@ -1,15 +1,37 @@
 import { browser } from "wxt/browser";
 
 // ── State ──
-let SERVER = "http://localhost:5000";
+let SERVER = "http://127.0.0.1:5000";
+
+type PingResponse = { ok?: boolean };
+type CollectTextsResponse = { texts?: string[] };
+type LanguagePair = { from: string; to: string };
+
+const LANGUAGE_NAMES: Record<string, string> = {
+  ar: "Arabic",
+  de: "German",
+  en: "English",
+  es: "Spanish",
+  fr: "French",
+  it: "Italian",
+  ja: "Japanese",
+  ko: "Korean",
+  pt: "Portuguese",
+  ru: "Russian",
+  zh: "Chinese",
+};
+
+const PRELOADED_SOURCE_LANGS = ["pt", "ja", "es", "fr", "de", "zh", "ko", "ar", "ru", "it"];
 
 // ── Restricted URL patterns (cannot inject content scripts) ──
 const RESTRICTED = /^(chrome|chrome-extension|about|edge|opera):|^https?:\/\/chrome\.google\.com\/webstore/;
 
 async function ensureContentScript(tabId: number): Promise<boolean> {
   try {
-    await browser.tabs.sendMessage(tabId, { type: "PING" });
-    return true;
+    const res = (await browser.tabs.sendMessage(tabId, {
+      type: "PING",
+    })) as PingResponse;
+    return Boolean(res?.ok);
   } catch {
     try {
       await browser.scripting.executeScript({
@@ -26,6 +48,8 @@ async function ensureContentScript(tabId: number): Promise<boolean> {
 // ── DOM refs ──
 const btnTranslate = document.getElementById("btn-translate") as HTMLButtonElement;
 const btnRestore = document.getElementById("btn-restore") as HTMLButtonElement;
+const btnRefresh = document.getElementById("btn-refresh") as HTMLButtonElement;
+const btnStatusRefresh = document.getElementById("btn-status-refresh") as HTMLButtonElement;
 const statusDot = document.getElementById("status-dot") as HTMLDivElement;
 const statusText = document.getElementById("status-text") as HTMLSpanElement;
 const progressWrap = document.getElementById("progress") as HTMLDivElement;
@@ -34,8 +58,44 @@ const progressLbl = document.getElementById("progress-label") as HTMLDivElement;
 const messageEl = document.getElementById("message") as HTMLDivElement;
 const langSelect = document.getElementById("lang-select") as HTMLSelectElement;
 
+function renderLanguageOptions(pairs: LanguagePair[]): void {
+  const current = langSelect.value;
+  langSelect.innerHTML = "";
+
+  [...new Map(
+    pairs
+      .filter((p) => p.to === "en")
+      .map((p) => [p.from, p]),
+  ).values()]
+    .sort((a, b) => (LANGUAGE_NAMES[a.from] ?? a.from).localeCompare(LANGUAGE_NAMES[b.from] ?? b.from))
+    .filter((p) => p.to === "en")
+    .forEach((p) => {
+      const opt = document.createElement("option");
+      opt.value = p.from;
+      opt.textContent = `${LANGUAGE_NAMES[p.from] ?? p.from} (${p.from})`;
+      if (p.from === current) opt.selected = true;
+      langSelect.appendChild(opt);
+    });
+}
+
+function configuredLanguagePairs(): LanguagePair[] {
+  return PRELOADED_SOURCE_LANGS.map((from) => ({ from, to: "en" }));
+}
+
+function mergeLanguagePairs(pairs: LanguagePair[]): LanguagePair[] {
+  return [...configuredLanguagePairs(), ...pairs];
+}
+
+function setRefreshState(refreshing: boolean): void {
+  btnRefresh.disabled = refreshing;
+  btnStatusRefresh.disabled = refreshing;
+  btnRefresh.classList.toggle("is-spinning", refreshing);
+  btnStatusRefresh.textContent = refreshing ? "Checking..." : "Refresh";
+}
+
 // ── Server check ──
 async function checkServer(): Promise<boolean> {
+  setRefreshState(true);
   try {
     const res = await fetch(`${SERVER}/health`, {
       signal: AbortSignal.timeout(3000),
@@ -46,34 +106,23 @@ async function checkServer(): Promise<boolean> {
         installed_pairs?: { from: string; to: string }[];
       };
       statusDot.className = "online";
-      statusText.textContent = "Server online — ready";
+      statusText.textContent = "Server online - ready";
       btnTranslate.disabled = false;
 
       if (data.installed_pairs?.length) {
-        const current = langSelect.value;
-        langSelect.innerHTML = "";
-        const NAMES: Record<string, string> = {
-          pt: "Portuguese", ja: "Japanese", es: "Spanish", fr: "French",
-          de: "German", zh: "Chinese", ko: "Korean", ar: "Arabic",
-          ru: "Russian", it: "Italian",
-        };
-        data.installed_pairs
-          .filter((p) => p.to === "en")
-          .forEach((p) => {
-            const opt = document.createElement("option");
-            opt.value = p.from;
-            opt.textContent = `${NAMES[p.from] ?? p.from} (${p.from})`;
-            if (p.from === current) opt.selected = true;
-            langSelect.appendChild(opt);
-          });
+        renderLanguageOptions(mergeLanguagePairs(data.installed_pairs));
+      } else {
+        statusText.textContent = "Server online - no source languages reported";
       }
       return true;
     }
   } catch {
     // offline
+  } finally {
+    setRefreshState(false);
   }
   statusDot.className = "offline";
-  statusText.textContent = "Server offline — check settings";
+  statusText.textContent = "Server offline - check settings";
   btnTranslate.disabled = true;
   return false;
 }
@@ -93,7 +142,7 @@ btnTranslate.addEventListener("click", async () => {
 
   btnTranslate.disabled = true;
   btnRestore.style.display = "none";
-  progressWrap.style.display = "flex";
+  progressWrap.style.display = "none";
   setProgress(0, 0);
 
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
@@ -117,16 +166,23 @@ btnTranslate.addEventListener("click", async () => {
 
   try {
     // Collect texts via content script
-    const texts = (await browser.tabs.sendMessage(tab.id, {
+    const response = (await browser.tabs.sendMessage(tab.id, {
       type: "COLLECT_TEXTS",
-    })) as string[];
+    })) as CollectTextsResponse;
+    const texts = response?.texts;
+
+    if (!Array.isArray(texts)) {
+      throw new Error("Content script returned an invalid text payload");
+    }
 
     if (!texts || texts.length === 0) {
-      statusText.textContent = "No translatable text found.";
+      statusText.textContent = "No translatable text found on this page.";
+      progressWrap.style.display = "none";
       btnTranslate.disabled = false;
       return;
     }
 
+    progressWrap.style.display = "flex";
     setProgress(0, texts.length);
 
     // Batch translate
@@ -192,6 +248,14 @@ btnRestore.addEventListener("click", async () => {
   statusText.textContent = "Original text restored";
 });
 
+async function refreshServerStatus(): Promise<void> {
+  messageEl.textContent = "";
+  await checkServer();
+}
+
+btnRefresh.addEventListener("click", refreshServerStatus);
+btnStatusRefresh.addEventListener("click", refreshServerStatus);
+
 // ── Settings ──
 document.getElementById("btn-settings")!.addEventListener("click", () => {
   browser.runtime.openOptionsPage();
@@ -199,6 +263,7 @@ document.getElementById("btn-settings")!.addEventListener("click", () => {
 
 // ── Init ──
 (async () => {
+  renderLanguageOptions(configuredLanguagePairs());
   const stored = await browser.storage.local.get("serverUrl");
   if (stored.serverUrl) SERVER = stored.serverUrl as string;
   checkServer();

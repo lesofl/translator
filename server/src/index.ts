@@ -49,28 +49,41 @@ app.post("/translate", async (c) => {
   const source = from || "pt";
   const target = to || "en";
 
-  const translations = await Promise.all(
-    texts.map(async (text) => {
-      const s = String(text);
-      if (!s.trim()) return s;
-      try {
-        const res = await fetch(`${LT_URL}/translate`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ q: s, source, target, format: "text" }),
-        });
-        if (!res.ok) throw new Error(`LT error ${res.status}`);
-        const result = (await res.json()) as { translatedText?: string };
-        return result.translatedText ?? s;
-      } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : String(e);
-        console.error("Translation error:", msg);
-        return s;
-      }
-    }),
-  );
+  const normalizedTexts = texts.map((text) => String(text));
 
-  return c.json({ translations });
+  try {
+    const res = await fetch(`${LT_URL}/translate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        q: normalizedTexts,
+        source,
+        target,
+        format: "text",
+      }),
+    });
+
+    if (!res.ok) throw new Error(`LT error ${res.status}`);
+
+    const result = (await res.json()) as {
+      translatedText?: string | string[];
+    };
+    const translated = result.translatedText;
+
+    if (Array.isArray(translated)) {
+      return c.json({ translations: translated });
+    }
+
+    if (typeof translated === "string" && normalizedTexts.length === 1) {
+      return c.json({ translations: [translated] });
+    }
+
+    throw new Error("Unexpected LibreTranslate response shape");
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("Translation error:", msg);
+    return c.json({ translations: normalizedTexts });
+  }
 });
 
 app.get("/languages", async (c) => {

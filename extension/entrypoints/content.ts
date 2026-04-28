@@ -4,22 +4,27 @@ export default defineContentScript({
   matches: ["<all_urls>"],
   runAt: "document_end",
   main() {
-    browser.runtime.onMessage.addListener((msg: unknown) => {
+    browser.runtime.onMessage.addListener((msg: unknown, _sender, sendResponse) => {
       const m = msg as { type: string; translations?: string[] };
       if (m.type === "PING") {
-        return Promise.resolve(true);
+        sendResponse({ ok: true });
+        return true;
       }
       if (m.type === "COLLECT_TEXTS") {
-        return Promise.resolve(collectTexts());
+        sendResponse({ texts: collectTexts() });
+        return true;
       }
       if (m.type === "APPLY_TRANSLATIONS" && m.translations) {
         applyTranslations(m.translations);
-        return Promise.resolve(true);
+        sendResponse({ ok: true });
+        return true;
       }
       if (m.type === "RESTORE_ORIGINAL") {
         contentRestore();
-        return Promise.resolve(true);
+        sendResponse({ ok: true });
+        return true;
       }
+      return false;
     });
   },
 });
@@ -36,19 +41,33 @@ function collectTexts(): string[] {
   const body = document.body;
   if (!body) return [];
 
-  const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
   const texts: string[] = [];
   const nodes: Text[] = [];
+  const visited = new WeakSet<Node>();
 
-  while (walker.nextNode()) {
-    const node = walker.currentNode as Text;
-    if (!node.nodeValue?.trim()) continue;
-    if (isSkipped(node.parentElement)) continue;
+  const collectFromRoot = (root: Document | DocumentFragment | Element): void => {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
 
-    nodes.push(node);
-    texts.push(node.nodeValue);
-  }
+    while (walker.nextNode()) {
+      const node = walker.currentNode as Text;
+      if (visited.has(node)) continue;
+      visited.add(node);
 
+      if (!node.nodeValue?.trim()) continue;
+      if (isSkipped(node.parentElement)) continue;
+
+      nodes.push(node);
+      texts.push(node.nodeValue);
+    }
+
+    const hostWalker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
+    while (hostWalker.nextNode()) {
+      const el = hostWalker.currentNode as Element;
+      if (el.shadowRoot) collectFromRoot(el.shadowRoot);
+    }
+  };
+
+  collectFromRoot(body);
   (window as unknown as Record<string, unknown>).__ptNodes = nodes;
   return texts;
 }
